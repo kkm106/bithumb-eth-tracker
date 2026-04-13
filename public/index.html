@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bithumb ETH Tracker</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      color: #e0e0e0;
+    }
+
+    .container {
+      max-width: 600px;
+      width: 100%;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .header h1 {
+      font-size: 2.5rem;
+      margin-bottom: 10px;
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .header p {
+      font-size: 1rem;
+      color: #b0b0b0;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 40px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .price-display {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .current-price {
+      font-size: 3rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .price-unit {
+      font-size: 1.2rem;
+      color: #b0b0b0;
+      margin-left: 5px;
+    }
+
+    .fluctate-rate {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-top: 15px;
+      padding: 10px 0;
+    }
+
+    .fluctate-rate.positive {
+      color: #ff4757;
+    }
+
+    .fluctate-rate.negative {
+      color: #2ed573;
+    }
+
+    .fluctate-rate.neutral {
+      color: #b0b0b0;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-top: 30px;
+    }
+
+    .stat-box {
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 12px;
+      padding: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .stat-label {
+      font-size: 0.85rem;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .updated-at {
+      text-align: center;
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.85rem;
+      color: #666;
+    }
+
+    .status {
+      text-align: center;
+      margin-top: 30px;
+      padding: 15px;
+      border-radius: 8px;
+      background: rgba(46, 213, 115, 0.1);
+      border: 1px solid rgba(46, 213, 115, 0.3);
+      color: #2ed573;
+      font-size: 0.9rem;
+    }
+
+    .status.error {
+      background: rgba(255, 71, 87, 0.1);
+      border-color: rgba(255, 71, 87, 0.3);
+      color: #ff4757;
+    }
+
+    .status.connecting {
+      background: rgba(255, 159, 64, 0.1);
+      border-color: rgba(255, 159, 64, 0.3);
+      color: #ff9f40;
+    }
+
+    .pulse {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+      margin-right: 8px;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #888;
+    }
+
+    .spinner {
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top: 3px solid #fff;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 20px auto;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>⟠ ETH/KRW</h1>
+      <p>Bithumb Real-time Tracker</p>
+    </div>
+
+    <div class="card">
+      <div id="content" class="loading">
+        <div class="spinner"></div>
+        <p>가격 정보를 불러오는 중...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let eventSource = null;
+    let isConnecting = false;
+
+    /**
+     * Format number with thousands separator
+     */
+    function formatNumber(num) {
+      if (num === null || num === undefined) return '—';
+      return Math.round(num).toLocaleString('ko-KR');
+    }
+
+    /**
+     * Format date to readable string
+     */
+    function formatDate(isoString) {
+      const date = new Date(isoString);
+      return date.toLocaleString('ko-KR');
+    }
+
+    /**
+     * Get rate status class
+     */
+    function getRateClass(rate) {
+      const num = parseFloat(rate);
+      if (num > 0) return 'positive';
+      if (num < 0) return 'negative';
+      return 'neutral';
+    }
+
+    /**
+     * Get rate symbol
+     */
+    function getRateSymbol(rate) {
+      const num = parseFloat(rate);
+      if (num > 0) return '📈 ';
+      if (num < 0) return '📉 ';
+      return '';
+    }
+
+    /**
+     * Render price data to DOM
+     */
+    function renderPrice(data) {
+      const rateClass = getRateClass(data.fluctate_rate_24h);
+      const rateSymbol = getRateSymbol(data.fluctate_rate_24h);
+
+      document.getElementById('content').innerHTML = `
+        <div class="price-display">
+          <div class="current-price">
+            ₩<span id="currentPrice">${formatNumber(data.current_price)}</span>
+          </div>
+          <div class="fluctate-rate ${rateClass}">
+            ${rateSymbol}${data.fluctate_rate_24h}%
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-label">고가 (24h)</div>
+            <div class="stat-value">₩<span id="maxPrice">${formatNumber(data.max_price)}</span></div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">저가 (24h)</div>
+            <div class="stat-value">₩<span id="minPrice">${formatNumber(data.min_price)}</span></div>
+          </div>
+        </div>
+
+        <div class="updated-at">
+          마지막 갱신: <span id="updatedAt">${formatDate(data.updated_at)}</span>
+        </div>
+
+        <div class="status" id="status">
+          <span class="pulse"></span>실시간 업데이트 연결됨
+        </div>
+      `;
+    }
+
+    /**
+     * Show error status
+     */
+    function showError(message) {
+      document.getElementById('content').innerHTML = `
+        <div class="loading">
+          <p style="color: #ff4757; margin-bottom: 20px;">⚠️ 오류 발생</p>
+          <p>${message}</p>
+          <p style="margin-top: 20px; font-size: 0.9rem;">다시 연결을 시도 중입니다...</p>
+        </div>
+        <div class="status error" id="status">
+          <span class="pulse"></span>${message}
+        </div>
+      `;
+    }
+
+    /**
+     * Show connecting status
+     */
+    function showConnecting() {
+      const status = document.getElementById('status');
+      if (status) {
+        status.classList.add('connecting');
+        status.innerHTML = '<span class="pulse"></span>연결 재시도 중...';
+      }
+    }
+
+    /**
+     * Initialize SSE connection
+     */
+    function connectSSE() {
+      if (isConnecting) return;
+      isConnecting = true;
+
+      eventSource = new EventSource('/events');
+
+      eventSource.addEventListener('price', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          renderPrice(data);
+          isConnecting = false;
+        } catch (err) {
+          console.error('Failed to parse price event:', err);
+        }
+      });
+
+      eventSource.addEventListener('error', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          console.warn('Bithumb API error:', data);
+        } catch (err) {
+          console.error('Price update failed, retrying...', err);
+        }
+      });
+
+      eventSource.onerror = () => {
+        eventSource.close();
+        isConnecting = false;
+        showConnecting();
+        
+        // Retry connection after 3 seconds
+        setTimeout(connectSSE, 3000);
+      };
+    }
+
+    /**
+     * Load initial price from /price endpoint
+     */
+    async function loadInitialPrice() {
+      try {
+        const response = await fetch('/price');
+        
+        if (!response.ok) {
+          if (response.status === 503) {
+            showError('가격 정보가 아직 준비되지 않았습니다. 잠시만 기다려주세요.');
+          } else {
+            showError('가격 정보를 불러올 수 없습니다.');
+          }
+          return;
+        }
+
+        const data = await response.json();
+        renderPrice(data);
+      } catch (err) {
+        console.error('Failed to load initial price:', err);
+        showError('네트워크 오류가 발생했습니다.');
+      }
+    }
+
+    /**
+     * Initialize app
+     */
+    function init() {
+      // Load initial price
+      loadInitialPrice();
+
+      // Connect to SSE
+      connectSSE();
+    }
+
+    // Start app when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>

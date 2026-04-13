@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bithumb TOP 10 대시보드</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+      color: #e0e0e0;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .header h1 {
+      font-size: 2rem;
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .header-info {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      font-size: 0.95rem;
+    }
+
+    .updated-time {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #b0b0b0;
+    }
+
+    .pulse {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #2ed573;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    .status {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      background: rgba(46, 213, 115, 0.1);
+      border: 1px solid rgba(46, 213, 115, 0.3);
+      color: #2ed573;
+    }
+
+    .status.error {
+      background: rgba(255, 71, 87, 0.1);
+      border-color: rgba(255, 71, 87, 0.3);
+      color: #ff4757;
+    }
+
+    .status.loading {
+      background: rgba(255, 159, 64, 0.1);
+      border-color: rgba(255, 159, 64, 0.3);
+      color: #ff9f40;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    thead {
+      background: rgba(255, 255, 255, 0.08);
+      border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+      position: sticky;
+      top: 0;
+    }
+
+    th {
+      padding: 16px;
+      text-align: right;
+      font-weight: 600;
+      color: #fff;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    th:first-child {
+      text-align: center;
+    }
+
+    th:nth-child(2) {
+      text-align: left;
+    }
+
+    td {
+      padding: 16px;
+      text-align: right;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: #e0e0e0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    td:first-child {
+      text-align: center;
+      font-weight: 700;
+      color: #fff;
+      font-size: 1.1rem;
+    }
+
+    td:nth-child(2) {
+      text-align: left;
+      font-weight: 600;
+      color: #fff;
+      font-size: 1rem;
+    }
+
+    tbody tr {
+      transition: background-color 0.2s ease;
+    }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    tbody tr:nth-child(1),
+    tbody tr:nth-child(2),
+    tbody tr:nth-child(3) {
+      background: rgba(255, 215, 0, 0.03);
+    }
+
+    tbody tr:nth-child(1) td:first-child {
+      color: #ffd700;
+    }
+
+    tbody tr:nth-child(2) td:first-child {
+      color: #c0c0c0;
+    }
+
+    tbody tr:nth-child(3) td:first-child {
+      color: #cd7f32;
+    }
+
+    .rate {
+      font-weight: 600;
+    }
+
+    .rate.positive {
+      color: #ff4757;
+    }
+
+    .rate.negative {
+      color: #2ed573;
+    }
+
+    .rate.neutral {
+      color: #b0b0b0;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px;
+      background: rgba(255, 255, 255, 0.03);
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .navigation {
+      display: flex;
+      gap: 15px;
+    }
+
+    .nav-link {
+      display: inline-block;
+      padding: 10px 20px;
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #fff;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      font-size: 0.9rem;
+    }
+
+    .nav-link:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      color: #888;
+    }
+
+    .spinner {
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top: 3px solid #fff;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin-right: 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .error-container {
+      padding: 40px;
+      text-align: center;
+      background: rgba(255, 71, 87, 0.1);
+      border: 1px solid rgba(255, 71, 87, 0.3);
+      border-radius: 12px;
+      margin-top: 20px;
+    }
+
+    .error-container p {
+      color: #ff4757;
+      margin-bottom: 10px;
+    }
+
+    @media (max-width: 768px) {
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .header h1 {
+        font-size: 1.5rem;
+      }
+
+      th, td {
+        padding: 12px 8px;
+        font-size: 0.85rem;
+      }
+
+      .table-wrapper {
+        font-size: 0.8rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🏆 빗썸 거래대금 TOP 10</h1>
+      <div class="header-info">
+        <div class="updated-time">
+          <span class="pulse"></span>
+          <span>마지막 갱신: <span id="updated-at">—</span></span>
+        </div>
+        <div id="status" class="status loading">
+          <span class="pulse"></span>데이터 로딩 중...
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div id="content" class="loading">
+        <div class="spinner"></div>
+        <p>TOP10 데이터를 불러오는 중...</p>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 30px;">
+      <div class="footer">
+        <div class="navigation">
+          <a href="/" class="nav-link">← ETH 상세 페이지</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let eventSource = null;
+    let isConnecting = false;
+
+    /**
+     * Format number with thousands separator (Korean)
+     */
+    function formatNumber(num) {
+      if (num === null || num === undefined) return '—';
+      return Math.round(num).toLocaleString('ko-KR');
+    }
+
+    /**
+     * Format decimal number with up to 2 decimal places
+     */
+    function formatDecimal(num) {
+      if (num === null || num === undefined) return '—';
+      return Number(num).toFixed(2).replace(/\.?0+$/, '');
+    }
+
+    /**
+     * Format trade value in units of 100 million KRW (억 단위)
+     */
+    function formatTradeValue(num) {
+      if (num === null || num === undefined) return '—';
+      const value = Number(num) / 100000000;
+      return value.toFixed(0) + '억';
+    }
+
+    /**
+     * Format time to HH:MM:SS (Korea time)
+     */
+    function formatTime(isoString) {
+      try {
+        const date = new Date(isoString);
+        return date.toLocaleTimeString('ko-KR', { 
+          hour: '2-digit', 
+          minute: '2-digit', 
+          second: '2-digit',
+          hour12: false
+        });
+      } catch (err) {
+        return '—';
+      }
+    }
+
+    /**
+     * Get rate status class
+     */
+    function getRateClass(rate) {
+      const num = parseFloat(rate);
+      if (num > 0) return 'positive';
+      if (num < 0) return 'negative';
+      return 'neutral';
+    }
+
+    /**
+     * Get rate symbol
+     */
+    function getRateSymbol(rate) {
+      const num = parseFloat(rate);
+      if (num > 0) return '+';
+      if (num < 0) return '';
+      return '';
+    }
+
+    /**
+     * Render TOP10 table
+     */
+    function renderTable(data) {
+      const tbody = document.getElementById('top10-body');
+      if (!tbody) {
+        createTableIfNeeded();
+      }
+
+      const table = document.getElementById('top10-body');
+      table.innerHTML = '';
+
+      data.coins.forEach(coin => {
+        const rateClass = getRateClass(coin.fluctate_rate_24h);
+        const rateSymbol = getRateSymbol(coin.fluctate_rate_24h);
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${coin.rank}</td>
+          <td>${coin.symbol}</td>
+          <td>₩${formatNumber(coin.current_price)}</td>
+          <td class="rate ${rateClass}">${rateSymbol}${coin.fluctate_rate_24h}%</td>
+          <td>${formatTradeValue(coin.acc_trade_value_24h)}</td>
+          <td>${formatDecimal(coin.acc_trade_volume_24h)}</td>
+        `;
+        table.appendChild(row);
+      });
+
+      // Update timestamp
+      document.getElementById('updated-at').textContent = formatTime(data.updated_at);
+
+      // Update status
+      const status = document.getElementById('status');
+      status.className = 'status';
+      status.innerHTML = '<span class="pulse"></span>실시간 업데이트 연결됨';
+    }
+
+    /**
+     * Create table structure if it doesn't exist
+     */
+    function createTableIfNeeded() {
+      const content = document.getElementById('content');
+      if (content.innerHTML.includes('<table')) return;
+
+      content.innerHTML = `
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>순위</th>
+                <th>코인</th>
+                <th>현재가 (KRW)</th>
+                <th>등락률 (24h)</th>
+                <th>거래대금</th>
+                <th>거래량</th>
+              </tr>
+            </thead>
+            <tbody id="top10-body">
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+
+    /**
+     * Show error status
+     */
+    function showError(message) {
+      const status = document.getElementById('status');
+      status.className = 'status error';
+      status.innerHTML = `<span class="pulse"></span>${message}`;
+
+      const content = document.getElementById('content');
+      if (!content.innerHTML.includes('<table')) {
+        content.innerHTML = `
+          <div class="error-container">
+            <p>⚠️ ${message}</p>
+            <p style="margin-top: 15px; color: #b0b0b0; font-size: 0.9rem;">
+              재연결을 시도 중입니다...
+            </p>
+          </div>
+        `;
+      }
+    }
+
+    /**
+     * Connect to TOP10 SSE stream
+     */
+    function connectSSE() {
+      if (isConnecting) return;
+      isConnecting = true;
+
+      eventSource = new EventSource('/top10/events');
+
+      eventSource.addEventListener('top10', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          createTableIfNeeded();
+          renderTable(data);
+          isConnecting = false;
+        } catch (err) {
+          console.error('Failed to parse top10 event:', err);
+        }
+      });
+
+      eventSource.addEventListener('error', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          console.warn('TOP10 API error:', data);
+          showError(data.message || 'API 오류 발생');
+        } catch (err) {
+          console.error('TOP10 update failed, retrying...', err);
+        }
+      });
+
+      eventSource.onerror = () => {
+        eventSource.close();
+        isConnecting = false;
+        showError('연결이 끊겼습니다');
+        
+        // Retry connection after 3 seconds
+        setTimeout(connectSSE, 3000);
+      };
+    }
+
+    /**
+     * Load initial TOP10 data from /top10/data endpoint
+     */
+    async function loadInitialData() {
+      try {
+        const response = await fetch('/top10/data');
+        
+        if (!response.ok) {
+          if (response.status === 503) {
+            showError('TOP10 데이터가 아직 준비되지 않았습니다.');
+          } else {
+            showError('TOP10 데이터를 불러올 수 없습니다.');
+          }
+          return;
+        }
+
+        const data = await response.json();
+        createTableIfNeeded();
+        renderTable(data);
+      } catch (err) {
+        console.error('Failed to load initial data:', err);
+        showError('네트워크 오류가 발생했습니다.');
+      }
+    }
+
+    /**
+     * Initialize app
+     */
+    function init() {
+      // Load initial data
+      loadInitialData();
+
+      // Connect to SSE
+      connectSSE();
+    }
+
+    // Start app when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>

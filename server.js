@@ -104,7 +104,7 @@ function fetchTop10() {
             current_price: Number(priceData.closing_price),
             fluctate_rate_24h: priceData.fluctate_rate_24H,
             acc_trade_value_24h: Number(priceData.acc_trade_value_24H),
-            acc_trade_volume_24h: Number(priceData.acc_trade_volume_24H)
+            acc_trade_volume_24h: Number(priceData.units_traded_24H)
           }));
           
           latestTop10 = {

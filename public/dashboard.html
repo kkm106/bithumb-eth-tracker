@@ -598,6 +598,26 @@
     }
 
     /**
+     * Render Kimchi Premium
+     */
+    function renderKimchi(data) {
+      if (!data.kimchi_premium) {
+        return '';
+      }
+      
+      const kimchiRate = parseFloat(data.kimchi_premium);
+      const rateClass = getRateClass(kimchiRate);
+      
+      return `
+        <div class="kimchi-section">
+          <div class="kimchi-label">김치 프리미엄</div>
+          <div class="kimchi-rate ${rateClass}">${kimchiRate > 0 ? '+' : ''}${kimchiRate.toFixed(2)}%</div>
+          <div class="kimchi-meta">국제 시세 대비 한국 시세</div>
+        </div>
+      `;
+    }
+
+    /**
      * Render ETH Card
      */
     function renderEthCard(data) {
@@ -629,6 +649,8 @@
             <div class="stat-value">₩<span id="minPrice">${formatNumber(data.min_price)}</span></div>
           </div>
         </div>
+
+        ${renderKimchi(data)}
 
         <div class="eth-connection-status">
           <div class="status" id="eth-status">

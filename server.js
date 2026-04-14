@@ -7,11 +7,16 @@ const path = require('path');
 const BITHUMB_URL = 'https://api.bithumb.com/public/ticker/ETH_KRW';
 const BITHUMB_ALL_URL = 'https://api.bithumb.com/public/ticker/ALL_KRW';
 const BINANCE_URL = 'https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT';
-const USD_KRW_RATE = Number(process.env.USD_KRW_RATE) || 1380;
+const EXCHANGE_RATE_URL = 'https://api.exchangerate-api.com/v4/latest/USD';
+const EXCHANGE_RATE_THROTTLE_MS = 60000; // 60 seconds
 const PORT = process.env.PORT || 3000;
 const POLL_INTERVAL = 10000; // 10 seconds (SRS FR-005)
 const TOP10_POLL_INTERVAL = 60000; // 60 seconds
 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+
+// Global exchange rate (dynamically updated)
+let currentUsdKrwRate = Number(process.env.USD_KRW_RATE) || 1380;
+let exchangeRateLastFetchedAt = 0; // Date.now() reference
 
 // Global state
 let latestPrice = null;
@@ -57,6 +62,51 @@ function fetchBinancePrice() {
 }
 
 /**
+ * Fetch USD/KRW exchange rate from exchangerate-api.com
+ * Throttled: actual HTTP request at most once per EXCHANGE_RATE_THROTTLE_MS.
+ * On failure: retains previous currentUsdKrwRate.
+ * @returns {Promise<void>}
+ */
+function fetchExchangeRate() {
+  const now = Date.now();
+  if (now - exchangeRateLastFetchedAt < EXCHANGE_RATE_THROTTLE_MS) {
+    return Promise.resolve(); // throttle: maintain previous value
+  }
+
+  return new Promise((resolve) => {
+    const req = https.get(EXCHANGE_RATE_URL, { timeout: 2000 }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          const rate = parsed?.rates?.KRW;
+          if (typeof rate === 'number' && rate > 0) {
+            currentUsdKrwRate = rate;
+            exchangeRateLastFetchedAt = Date.now();
+            console.log(`[ExchangeRate] USD/KRW 갱신: ${currentUsdKrwRate}`);
+          } else {
+            console.error('[ExchangeRate] 유효하지 않은 환율 응답, 이전값 유지:', currentUsdKrwRate);
+          }
+        } catch (err) {
+          console.error('[ExchangeRate] 파싱 오류, 이전값 유지:', err.message);
+        }
+        resolve();
+      });
+    });
+    req.on('error', (err) => {
+      console.error('[ExchangeRate] 요청 오류, 이전값 유지:', err.message);
+      resolve();
+    });
+    req.on('timeout', () => {
+      console.error('[ExchangeRate] 타임아웃, 이전값 유지');
+      req.destroy();
+      resolve();
+    });
+  });
+}
+
+/**
  * Calculate Kimchi Premium rate
  * @param {number} bithumbKrw  - Bithumb ETH/KRW price
  * @param {number} binanceUsdt - Binance ETH/USDT price
@@ -64,7 +114,7 @@ function fetchBinancePrice() {
  */
 function calcKimchiRate(bithumbKrw, binanceUsdt) {
   if (!bithumbKrw || !binanceUsdt || binanceUsdt <= 0) return null;
-  const base = binanceUsdt * USD_KRW_RATE;
+  const base = binanceUsdt * currentUsdKrwRate;
   if (base <= 0) return null;
   return Math.round(((bithumbKrw / base) - 1) * 10000) / 100;
 }
@@ -97,22 +147,25 @@ async function fetchPrice() {
               updated_at: new Date().toISOString()
             };
 
-            // Binance 김프 계산 (비동기, 결과 기다림)
-            const binancePrice = await fetchBinancePrice();
+            // Binance 및 환율 병렬 조회 (비동기, 결과 기다림)
+            const [binancePrice] = await Promise.all([
+              fetchBinancePrice(),
+              fetchExchangeRate()   // currentUsdKrwRate를 갱신 (throttle 적용)
+            ]);
             const kimchiRate = calcKimchiRate(latestPrice.current_price, binancePrice);
 
             // latestKimchi 갱신 (Binance 실패 시 이전 kimchi_rate 유지)
             latestKimchi = {
               bithumb_krw: latestPrice.current_price,
               binance_usdt: binancePrice ?? latestKimchi?.binance_usdt ?? null,
-              usd_krw_rate: USD_KRW_RATE,
+              usd_krw_rate: currentUsdKrwRate,   // ← 실시간 환율
               kimchi_rate: kimchiRate ?? latestKimchi?.kimchi_rate ?? null,
               updated_at: latestPrice.updated_at
             };
 
             // latestPrice에도 반영
             latestPrice.binance_price = latestKimchi.binance_usdt;
-            latestPrice.usd_krw_rate  = USD_KRW_RATE;
+            latestPrice.usd_krw_rate  = currentUsdKrwRate;   // ← 실시간 환율
             latestPrice.kimchi_rate   = latestKimchi.kimchi_rate;
 
             console.log(`[${latestPrice.updated_at}] Price updated: ₩${latestPrice.current_price} (kimchi: ${latestPrice.kimchi_rate}%)`);

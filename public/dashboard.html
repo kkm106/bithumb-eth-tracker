@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bithumb 통합 대시보드</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      min-height: 100vh;
+      padding: 40px 20px;
+      color: #e0e0e0;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 40px;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .header h1 {
+      font-size: 2rem;
+      color: #fff;
+      font-weight: 700;
+    }
+
+    .header-info {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      font-size: 0.95rem;
+    }
+
+    .updated-time {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #b0b0b0;
+    }
+
+    .pulse {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #2ed573;
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+      }
+      50% {
+        opacity: 0.5;
+      }
+    }
+
+    .status {
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      background: rgba(46, 213, 115, 0.1);
+      border: 1px solid rgba(46, 213, 115, 0.3);
+      color: #2ed573;
+    }
+
+    .status.error {
+      background: rgba(255, 71, 87, 0.1);
+      border-color: rgba(255, 71, 87, 0.3);
+      color: #ff4757;
+    }
+
+    .status.connecting {
+      background: rgba(255, 159, 64, 0.1);
+      border-color: rgba(255, 159, 64, 0.3);
+      color: #ff9f40;
+    }
+
+    /* Dashboard Grid Layout */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 400px 1fr;
+      gap: 30px;
+      align-items: start;
+    }
+
+    @media (max-width: 1000px) {
+      .dashboard-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+      overflow: hidden;
+    }
+
+    /* ETH Card Styles */
+    .eth-card {
+      padding: 40px;
+    }
+
+    .eth-header {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .eth-symbol {
+      font-size: 1.5rem;
+      color: #fff;
+      font-weight: 700;
+      margin-bottom: 5px;
+    }
+
+    .price-display {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .current-price {
+      font-size: 3rem;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 10px;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .fluctate-rate {
+      font-size: 1.5rem;
+      font-weight: 600;
+      margin-top: 15px;
+      padding: 10px 0;
+    }
+
+    .fluctate-rate.positive {
+      color: #ff4757;
+    }
+
+    .fluctate-rate.negative {
+      color: #2ed573;
+    }
+
+    .fluctate-rate.neutral {
+      color: #b0b0b0;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+      margin-top: 30px;
+    }
+
+    .stat-box {
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 12px;
+      padding: 15px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: #fff;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .eth-connection-status {
+      text-align: center;
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.85rem;
+    }
+
+    .eth-connection-status .status {
+      display: inline-block;
+      margin: 0;
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      color: #888;
+      flex-direction: column;
+    }
+
+    .spinner {
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top: 3px solid #fff;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin-bottom: 15px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* TOP10 Table Styles */
+    .table-wrapper {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    thead {
+      background: rgba(255, 255, 255, 0.08);
+      border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+      position: sticky;
+      top: 0;
+    }
+
+    th {
+      padding: 16px;
+      text-align: right;
+      font-weight: 600;
+      color: #fff;
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    th:first-child {
+      text-align: center;
+    }
+
+    th:nth-child(2) {
+      text-align: left;
+    }
+
+    td {
+      padding: 16px;
+      text-align: right;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: #e0e0e0;
+      font-variant-numeric: tabular-nums;
+    }
+
+    td:first-child {
+      text-align: center;
+      font-weight: 700;
+      color: #fff;
+      font-size: 1.1rem;
+    }
+
+    td:nth-child(2) {
+      text-align: left;
+      font-weight: 600;
+      color: #fff;
+      font-size: 1rem;
+    }
+
+    tbody tr {
+      transition: background-color 0.2s ease;
+    }
+
+    tbody tr:hover {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    tbody tr:nth-child(1),
+    tbody tr:nth-child(2),
+    tbody tr:nth-child(3) {
+      background: rgba(255, 215, 0, 0.03);
+    }
+
+    tbody tr:nth-child(1) td:first-child {
+      color: #ffd700;
+    }
+
+    tbody tr:nth-child(2) td:first-child {
+      color: #c0c0c0;
+    }
+
+    tbody tr:nth-child(3) td:first-child {
+      color: #cd7f32;
+    }
+
+    .rate {
+      font-weight: 600;
+    }
+
+    .rate.positive {
+      color: #ff4757;
+    }
+
+    .rate.negative {
+      color: #2ed573;
+    }
+
+    .rate.neutral {
+      color: #b0b0b0;
+    }
+
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 30px;
+      background: rgba(255, 255, 255, 0.03);
+      border-top: 1px solid rgba(255, 255, 255, 0.05);
+      gap: 10px;
+      flex-wrap: wrap;
+      font-size: 0.9rem;
+      color: #b0b0b0;
+    }
+
+    .footer-info {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+
+    .footer-navigation {
+      display: flex;
+      gap: 15px;
+    }
+
+    .nav-link {
+      display: inline-block;
+      padding: 8px 16px;
+      border-radius: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: #fff;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      font-size: 0.85rem;
+    }
+
+    .nav-link:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .error-container {
+      padding: 40px;
+      text-align: center;
+      background: rgba(255, 71, 87, 0.1);
+      border: 1px solid rgba(255, 71, 87, 0.3);
+      border-radius: 12px;
+    }
+
+    .error-container p {
+      color: #ff4757;
+      margin-bottom: 10px;
+    }
+
+    @media (max-width: 768px) {
+      .header {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .header h1 {
+        font-size: 1.5rem;
+      }
+
+      th, td {
+        padding: 12px 8px;
+        font-size: 0.85rem;
+      }
+
+      .table-wrapper {
+        font-size: 0.8rem;
+      }
+
+      .current-price {
+        font-size: 2rem;
+      }
+
+      .fluctate-rate {
+        font-size: 1.2rem;
+      }
+
+      .eth-card {
+        padding: 30px;
+      }
+
+      .footer {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🏗️ 빗썸 통합 대시보드</h1>
+      <div class="header-info">
+        <div class="updated-time">
+          <span class="pulse" id="main-pulse"></span>
+          <span>마지막 갱신: <span id="updated-at">—</span></span>
+        </div>
+        <div id="main-status" class="status">
+          <span class="pulse"></span>데이터 로딩 중...
+        </div>
+      </div>
+    </div>
+
+    <div class="dashboard-grid">
+      <!-- ETH Card -->
+      <div class="card eth-card">
+        <div id="eth-content" class="loading">
+          <div class="spinner"></div>
+          <p>ETH 정보를 불러오는 중...</p>
+        </div>
+      </div>
+
+      <!-- TOP10 Table -->
+      <div class="card">
+        <div id="top10-content" class="loading">
+          <div class="spinner"></div>
+          <p>TOP10 데이터를 불러오는 중...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div style="margin-top: 30px;">
+      <div class="card">
+        <div class="footer">
+          <div class="footer-info">
+            <span>통합 대시보드 | ETH 및 TOP10 정보 실시간 업데이트</span>
+          </div>
+          <div class="footer-navigation">
+            <a href="/top10" class="nav-link">← TOP10 상세 →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let ethSSE = null;
+    let top10SSE = null;
+    let ethConnecting = false;
+    let top10Connecting = false;
+
+    /**
+     * Format number with thousands separator
+     */
+    function formatNumber(num) {
+      if (num === null || num === undefined) return '—';
+      return Math.round(num).toLocaleString('ko-KR');
+    }
+
+    /**
+     * Format decimal number
+     */
+    function formatDecimal(num) {
+      if (num === null || num === undefined) return '—';
+      return Number(num).toFixed(2).replace(/\.?0+$/, '');
+    }
+
+    /**
+     * Format trade value in 억 (100 million KRW)
+     */
+    function formatTradeValue(num) {
+      if (num === null || num === undefined) return '—';
+      const value = Number(num) / 100000000;
+      return value.toFixed(0) + '억';
+    }
+
+    /**
+     * Format time to HH:MM:SS
+     */
+    function formatTime(isoString) {
+      try {
+        const date = new Date(isoString);
+        return date.toLocaleTimeString('ko-KR', { 
+          hour: '2-digit', 
+          minute: '2-digit', 
+          second: '2-digit',
+          hour12: false
+        });
+      } catch (err) {
+        return '—';
+      }
+    }
+
+    /**
+     * Get rate status class
+     */
+    function getRateClass(rate) {
+      const num = parseFloat(rate);
+      if (num > 0) return 'positive';
+      if (num < 0) return 'negative';
+      return 'neutral';
+    }
+
+    /**
+     * Get rate symbol
+     */
+    function getRateSymbol(rate) {
+      const num = parseFloat(rate);
+      if (num > 0) return '📈 ';
+      if (num < 0) return '📉 ';
+      return '';
+    }
+
+    /**
+     * Update global status based on both streams
+     */
+    function updateGlobalStatus() {
+      const statusEl = document.getElementById('main-status');
+      const pulseEl = document.getElementById('main-pulse');
+      
+      const ethConnected = ethSSE && ethSSE.readyState === EventSource.OPEN;
+      const top10Connected = top10SSE && top10SSE.readyState === EventSource.OPEN;
+      
+      if (ethConnected && top10Connected) {
+        statusEl.className = 'status';
+        statusEl.innerHTML = '<span class="pulse"></span>실시간 업데이트 연결됨';
+        pulseEl.style.background = '#2ed573';
+      } else if (ethConnecting || top10Connecting) {
+        statusEl.className = 'status connecting';
+        statusEl.innerHTML = '<span class="pulse"></span>연결 재시도 중...';
+        pulseEl.style.background = '#ff9f40';
+      } else {
+        statusEl.className = 'status error';
+        statusEl.innerHTML = '<span class="pulse"></span>연결 끊김';
+        pulseEl.style.background = '#ff4757';
+      }
+    }
+
+    /**
+     * Render ETH Card
+     */
+    function renderEthCard(data) {
+      const rateClass = getRateClass(data.fluctate_rate_24h);
+      const rateSymbol = getRateSymbol(data.fluctate_rate_24h);
+
+      const content = document.getElementById('eth-content');
+      content.innerHTML = `
+        <div class="eth-header">
+          <div class="eth-symbol">⟠ ETH/KRW</div>
+        </div>
+
+        <div class="price-display">
+          <div class="current-price">
+            ₩<span id="currentPrice">${formatNumber(data.current_price)}</span>
+          </div>
+          <div class="fluctate-rate ${rateClass}">
+            ${rateSymbol}${data.fluctate_rate_24h}%
+          </div>
+        </div>
+
+        <div class="stats-grid">
+          <div class="stat-box">
+            <div class="stat-label">고가 (24h)</div>
+            <div class="stat-value">₩<span id="maxPrice">${formatNumber(data.max_price)}</span></div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-label">저가 (24h)</div>
+            <div class="stat-value">₩<span id="minPrice">${formatNumber(data.min_price)}</span></div>
+          </div>
+        </div>
+
+        <div class="eth-connection-status">
+          <div class="status" id="eth-status">
+            <span class="pulse"></span>ETH 업데이트 중...
+          </div>
+        </div>
+      `;
+
+      // Update global timestamp
+      document.getElementById('updated-at').textContent = formatTime(data.updated_at);
+    }
+
+    /**
+     * Render TOP10 Table
+     */
+    function renderTop10Table(data) {
+      const content = document.getElementById('top10-content');
+      
+      // Create table if needed
+      if (!content.innerHTML.includes('<table')) {
+        content.innerHTML = `
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>순위</th>
+                  <th>코인</th>
+                  <th>현재가 (KRW)</th>
+                  <th>등락률 (24h)</th>
+                  <th>거래대금</th>
+                  <th>거래량</th>
+                </tr>
+              </thead>
+              <tbody id="top10-body">
+              </tbody>
+            </table>
+          </div>
+        `;
+      }
+
+      const tbody = document.getElementById('top10-body');
+      tbody.innerHTML = '';
+
+      data.coins.forEach(coin => {
+        const rateClass = getRateClass(coin.fluctate_rate_24h);
+        const rateSymbol = getRateSymbol(coin.fluctate_rate_24h);
+
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td>${coin.rank}</td>
+          <td>${coin.symbol}</td>
+          <td>₩${formatNumber(coin.current_price)}</td>
+          <td class="rate ${rateClass}">${rateSymbol}${coin.fluctate_rate_24h}%</td>
+          <td>${formatTradeValue(coin.acc_trade_value_24h)}</td>
+          <td>${formatDecimal(coin.acc_trade_volume_24h)}</td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      // Update global timestamp
+      document.getElementById('updated-at').textContent = formatTime(data.updated_at);
+    }
+
+    /**
+     * Connect to ETH SSE stream
+     */
+    function connectEthSSE() {
+      if (ethConnecting) return;
+      ethConnecting = true;
+      updateGlobalStatus();
+
+      ethSSE = new EventSource('/events');
+
+      ethSSE.addEventListener('price', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          renderEthCard({
+            ...data,
+            max_price: data.max_price || latestEthData?.max_price,
+            min_price: data.min_price || latestEthData?.min_price,
+            current_price: data.current_price || latestEthData?.current_price
+          });
+          ethConnecting = false;
+          updateGlobalStatus();
+        } catch (err) {
+          console.error('Failed to parse ETH event:', err);
+        }
+      });
+
+      ethSSE.onerror = () => {
+        ethSSE.close();
+        ethConnecting = false;
+        updateGlobalStatus();
+        setTimeout(connectEthSSE, 3000);
+      };
+    }
+
+    /**
+     * Connect to TOP10 SSE stream
+     */
+    function connectTop10SSE() {
+      if (top10Connecting) return;
+      top10Connecting = true;
+      updateGlobalStatus();
+
+      top10SSE = new EventSource('/top10/events');
+
+      top10SSE.addEventListener('top10', (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          renderTop10Table(data);
+          top10Connecting = false;
+          updateGlobalStatus();
+        } catch (err) {
+          console.error('Failed to parse TOP10 event:', err);
+        }
+      });
+
+      top10SSE.onerror = () => {
+        top10SSE.close();
+        top10Connecting = false;
+        updateGlobalStatus();
+        setTimeout(connectTop10SSE, 3000);
+      };
+    }
+
+    // Store latest ETH data for supplementing SSE updates
+    let latestEthData = null;
+
+    /**
+     * Load initial data
+     */
+    async function loadInitialData() {
+      try {
+        const [ethRes, top10Res] = await Promise.all([
+          fetch('/price'),
+          fetch('/top10/data')
+        ]);
+
+        if (ethRes.ok) {
+          const ethData = await ethRes.json();
+          latestEthData = ethData;
+          renderEthCard(ethData);
+        }
+
+        if (top10Res.ok) {
+          const top10Data = await top10Res.json();
+          renderTop10Table(top10Data);
+        }
+      } catch (err) {
+        console.error('Failed to load initial data:', err);
+      }
+    }
+
+    /**
+     * Initialize app
+     */
+    function init() {
+      // Load initial data
+      loadInitialData();
+
+      // Connect to both SSE streams
+      connectEthSSE();
+      connectTop10SSE();
+    }
+
+    // Start app when DOM is ready
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>

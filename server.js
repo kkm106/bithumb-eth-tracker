@@ -199,7 +199,7 @@ const server = http.createServer((req, res) => {
 
   // Route: GET /
   if (pathname === '/' && req.method === 'GET') {
-    const filePath = path.join(__dirname, 'public', 'index.html');
+    const filePath = path.join(__dirname, 'public', 'dashboard.html');
     
     fs.readFile(filePath, (err, content) => {
       if (err) {
@@ -208,6 +208,19 @@ const server = http.createServer((req, res) => {
         return;
       }
 
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(content);
+    });
+  }
+  // Route: GET /dashboard (alias for /)
+  else if (pathname === '/dashboard' && req.method === 'GET') {
+    const filePath = path.join(__dirname, 'public', 'dashboard.html');
+    fs.readFile(filePath, (err, content) => {
+      if (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Error reading dashboard.html');
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(content);
     });

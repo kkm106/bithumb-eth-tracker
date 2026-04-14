@@ -6,13 +6,16 @@ const path = require('path');
 // Constants
 const BITHUMB_URL = 'https://api.bithumb.com/public/ticker/ETH_KRW';
 const BITHUMB_ALL_URL = 'https://api.bithumb.com/public/ticker/ALL_KRW';
+const BINANCE_URL = 'https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT';
+const USD_KRW_RATE = Number(process.env.USD_KRW_RATE) || 1380;
 const PORT = process.env.PORT || 3000;
-const POLL_INTERVAL = 60000; // 60 seconds
+const POLL_INTERVAL = 10000; // 10 seconds (SRS FR-005)
 const TOP10_POLL_INTERVAL = 60000; // 60 seconds
 const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 
 // Global state
 let latestPrice = null;
+let latestKimchi = null;
 const sseClients = new Map();
 let clientIdCounter = 0;
 
@@ -22,53 +25,123 @@ const top10SseClients = new Map();
 let top10ClientIdCounter = 0;
 
 /**
+ * Fetch ETH/USDT price from Binance Public API
+ * @returns {Promise<number|null>}
+ */
+function fetchBinancePrice() {
+  return new Promise((resolve) => {
+    const req = https.get(BINANCE_URL, { timeout: 5000 }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const parsed = JSON.parse(data);
+          const price = parseFloat(parsed.price);
+          resolve(isNaN(price) ? null : price);
+        } catch (err) {
+          console.error('Binance parse error:', err.message);
+          resolve(null);
+        }
+      });
+    });
+    req.on('error', (err) => {
+      console.error('Binance fetch error:', err.message);
+      resolve(null);
+    });
+    req.on('timeout', () => {
+      console.error('Binance fetch timeout');
+      req.destroy();
+      resolve(null);
+    });
+  });
+}
+
+/**
+ * Calculate Kimchi Premium rate
+ * @param {number} bithumbKrw  - Bithumb ETH/KRW price
+ * @param {number} binanceUsdt - Binance ETH/USDT price
+ * @returns {number|null} Rate in %, rounded to 2 decimal places. null if invalid.
+ */
+function calcKimchiRate(bithumbKrw, binanceUsdt) {
+  if (!bithumbKrw || !binanceUsdt || binanceUsdt <= 0) return null;
+  const base = binanceUsdt * USD_KRW_RATE;
+  if (base <= 0) return null;
+  return Math.round(((bithumbKrw / base) - 1) * 10000) / 100;
+}
+
+/**
  * Fetch latest ETH price from Bithumb API
  */
-function fetchPrice() {
-  https.get(BITHUMB_URL, { timeout: 10000 }, (res) => {
-    let data = '';
+async function fetchPrice() {
+  try {
+    https.get(BITHUMB_URL, { timeout: 10000 }, async (res) => {
+      let data = '';
 
-    res.on('data', (chunk) => {
-      data += chunk;
-    });
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
 
-    res.on('end', () => {
-      try {
-        const response = JSON.parse(data);
-        
-        if (response.status === '0000' && response.data) {
-          const priceData = response.data;
-          latestPrice = {
-            symbol: 'ETH_KRW',
-            current_price: Number(priceData.closing_price),
-            opening_price: Number(priceData.opening_price),
-            min_price: Number(priceData.min_price),
-            max_price: Number(priceData.max_price),
-            fluctate_rate_24h: priceData.fluctate_rate_24H,
-            updated_at: new Date().toISOString()
-          };
-
-          console.log(`[${latestPrice.updated_at}] Price updated: ₩${latestPrice.current_price}`);
+      res.on('end', async () => {
+        try {
+          const response = JSON.parse(data);
           
-          // Broadcast to all SSE clients
-          broadcast('price', {
-            current_price: latestPrice.current_price,
-            fluctate_rate_24h: latestPrice.fluctate_rate_24h,
-            updated_at: latestPrice.updated_at
-          });
-        } else {
-          console.error('Bithumb API error:', response.status);
-          broadcast('error', { message: 'Bithumb API error' });
+          if (response.status === '0000' && response.data) {
+            const priceData = response.data;
+            latestPrice = {
+              symbol: 'ETH_KRW',
+              current_price: Number(priceData.closing_price),
+              opening_price: Number(priceData.opening_price),
+              min_price: Number(priceData.min_price),
+              max_price: Number(priceData.max_price),
+              fluctate_rate_24h: priceData.fluctate_rate_24H,
+              updated_at: new Date().toISOString()
+            };
+
+            // Binance 김프 계산 (비동기, 결과 기다림)
+            const binancePrice = await fetchBinancePrice();
+            const kimchiRate = calcKimchiRate(latestPrice.current_price, binancePrice);
+
+            // latestKimchi 갱신 (Binance 실패 시 이전 kimchi_rate 유지)
+            latestKimchi = {
+              bithumb_krw: latestPrice.current_price,
+              binance_usdt: binancePrice ?? latestKimchi?.binance_usdt ?? null,
+              usd_krw_rate: USD_KRW_RATE,
+              kimchi_rate: kimchiRate ?? latestKimchi?.kimchi_rate ?? null,
+              updated_at: latestPrice.updated_at
+            };
+
+            // latestPrice에도 반영
+            latestPrice.binance_price = latestKimchi.binance_usdt;
+            latestPrice.usd_krw_rate  = USD_KRW_RATE;
+            latestPrice.kimchi_rate   = latestKimchi.kimchi_rate;
+
+            console.log(`[${latestPrice.updated_at}] Price updated: ₩${latestPrice.current_price} (kimchi: ${latestPrice.kimchi_rate}%)`);
+            
+            // Broadcast to all SSE clients
+            broadcast('price', {
+              current_price: latestPrice.current_price,
+              fluctate_rate_24h: latestPrice.fluctate_rate_24h,
+              binance_price: latestPrice.binance_price,
+              usd_krw_rate: latestPrice.usd_krw_rate,
+              kimchi_rate: latestPrice.kimchi_rate,
+              updated_at: latestPrice.updated_at
+            });
+          } else {
+            console.error('Bithumb API error:', response.status);
+            broadcast('error', { message: 'Bithumb API error' });
+          }
+        } catch (err) {
+          console.error('Failed to parse Bithumb response:', err.message);
+          broadcast('error', { message: 'Failed to parse response' });
         }
-      } catch (err) {
-        console.error('Failed to parse Bithumb response:', err.message);
-        broadcast('error', { message: 'Failed to parse response' });
-      }
+      });
+    }).on('error', (err) => {
+      console.error('Fetch price error:', err.message);
+      broadcast('error', { message: 'Fetch failed' });
     });
-  }).on('error', (err) => {
-    console.error('Fetch price error:', err.message);
-    broadcast('error', { message: 'Fetch failed' });
-  });
+  } catch (err) {
+    console.error('Fetch price exception:', err.message);
+  }
 }
 
 /**
@@ -235,6 +308,16 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ error: 'price not yet available', code: 503 }));
     }
   }
+  // Route: GET /gimme
+  else if (pathname === '/gimme' && req.method === 'GET') {
+    if (latestKimchi) {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      res.end(JSON.stringify(latestKimchi));
+    } else {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'kimchi data not yet available', code: 503 }));
+    }
+  }
   // Route: GET /events (SSE)
   else if (pathname === '/events' && req.method === 'GET') {
     res.writeHead(200, {
@@ -257,6 +340,9 @@ const server = http.createServer((req, res) => {
       const initialMessage = `event: price\ndata: ${JSON.stringify({
         current_price: latestPrice.current_price,
         fluctate_rate_24h: latestPrice.fluctate_rate_24h,
+        binance_price: latestPrice.binance_price,
+        usd_krw_rate: latestPrice.usd_krw_rate,
+        kimchi_rate: latestPrice.kimchi_rate,
         updated_at: latestPrice.updated_at
       })}\n\n`;
       res.write(initialMessage);

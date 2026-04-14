@@ -193,6 +193,38 @@
       font-variant-numeric: tabular-nums;
     }
 
+    /* Kimchi Premium */
+    .kimchi-section {
+      margin-top: 20px;
+      padding-top: 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      text-align: center;
+    }
+
+    .kimchi-label {
+      font-size: 0.75rem;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .kimchi-rate {
+      font-size: 2rem;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+    }
+
+    .kimchi-rate.positive { color: #2ed573; }  /* 양수(국내 프리미엄) = 녹색 */
+    .kimchi-rate.negative { color: #ff4757; }  /* 음수(역프리미엄)   = 빨강 */
+    .kimchi-rate.neutral  { color: #b0b0b0; }  /* N/A                = 회색 */
+
+    .kimchi-meta {
+      font-size: 0.78rem;
+      color: #777;
+      margin-top: 6px;
+    }
+
     .eth-connection-status {
       text-align: center;
       margin-top: 20px;

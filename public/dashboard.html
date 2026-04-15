@@ -193,36 +193,44 @@
       font-variant-numeric: tabular-nums;
     }
 
-    /* Kimchi Premium */
-    .kimchi-section {
-      margin-top: 20px;
-      padding-top: 20px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
-      text-align: center;
+    /* === 김프율 인라인 뱃지 === */
+    .kimchi-inline {
+      display: flex;
+      justify-content: center;
+      margin-top: 10px;
     }
 
-    .kimchi-label {
-      font-size: 0.75rem;
-      color: #888;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 6px;
-    }
-
-    .kimchi-rate {
-      font-size: 2rem;
+    .kimchi-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 14px;
+      border-radius: 20px;
+      font-size: 1.1rem;
       font-weight: 700;
-      letter-spacing: -0.5px;
+      letter-spacing: -0.3px;
+      font-variant-numeric: tabular-nums;
     }
 
-    .kimchi-rate.positive { color: #2ed573; }  /* 양수(국내 프리미엄) = 녹색 */
-    .kimchi-rate.negative { color: #ff4757; }  /* 음수(역프리미엄)   = 빨강 */
-    .kimchi-rate.neutral  { color: #b0b0b0; }  /* N/A                = 회색 */
+    /* 양수(국내 프리미엄) = 빨강 */
+    .kimchi-badge.positive {
+      color: #ff4757;
+      background: rgba(255, 71, 87, 0.12);
+      border: 1px solid rgba(255, 71, 87, 0.3);
+    }
 
-    .kimchi-meta {
-      font-size: 0.78rem;
-      color: #777;
-      margin-top: 6px;
+    /* 음수(역프리미엄) = 파랑 */
+    .kimchi-badge.negative {
+      color: #3d9cff;
+      background: rgba(61, 156, 255, 0.12);
+      border: 1px solid rgba(61, 156, 255, 0.3);
+    }
+
+    /* 데이터 없음 = 회색 */
+    .kimchi-badge.neutral {
+      color: #b0b0b0;
+      background: rgba(176, 176, 176, 0.08);
+      border: 1px solid rgba(176, 176, 176, 0.2);
     }
 
     .eth-connection-status {
@@ -444,6 +452,11 @@
         font-size: 1.2rem;
       }
 
+      .kimchi-badge {
+        font-size: 0.95rem;
+        padding: 4px 12px;
+      }
+
       .eth-card {
         padding: 30px;
       }
@@ -598,23 +611,25 @@
     }
 
     /**
-     * Render Kimchi Premium
+     * 김프율 인라인 뱃지 HTML 반환
+     * @param {number|null} kimchiRate
+     * @returns {string} HTML string
      */
-    function renderKimchi(data) {
-      if (!data.kimchi_premium) {
-        return '';
+    function renderKimchiBadge(kimchiRate) {
+      if (kimchiRate === null || kimchiRate === undefined) {
+        return `
+          <div class="kimchi-inline">
+            <span class="kimchi-badge neutral">🌏 -</span>
+          </div>`;
       }
-      
-      const kimchiRate = parseFloat(data.kimchi_premium);
-      const rateClass = getRateClass(kimchiRate);
-      
+      const rate = Number(kimchiRate);
+      const cls   = rate > 0 ? 'positive' : rate < 0 ? 'negative' : 'neutral';
+      const emoji = rate > 0 ? '🔥' : rate < 0 ? '🧊' : '🌏';
+      const sign  = rate > 0 ? '+' : '';
       return `
-        <div class="kimchi-section">
-          <div class="kimchi-label">김치 프리미엄</div>
-          <div class="kimchi-rate ${rateClass}">${kimchiRate > 0 ? '+' : ''}${kimchiRate.toFixed(2)}%</div>
-          <div class="kimchi-meta">국제 시세 대비 한국 시세</div>
-        </div>
-      `;
+        <div class="kimchi-inline">
+          <span class="kimchi-badge ${cls}">${emoji} ${sign}${rate.toFixed(2)}%</span>
+        </div>`;
     }
 
     /**
@@ -637,6 +652,7 @@
           <div class="fluctate-rate ${rateClass}">
             ${rateSymbol}${data.fluctate_rate_24h}%
           </div>
+          ${renderKimchiBadge(data.kimchi_rate)}
         </div>
 
         <div class="stats-grid">
@@ -649,8 +665,6 @@
             <div class="stat-value">₩<span id="minPrice">${formatNumber(data.min_price)}</span></div>
           </div>
         </div>
-
-        ${renderKimchi(data)}
 
         <div class="eth-connection-status">
           <div class="status" id="eth-status">
@@ -727,6 +741,13 @@
       ethSSE.addEventListener('price', (e) => {
         try {
           const data = JSON.parse(e.data);
+
+          // [수정] SSE 수신 시 latestEthData 갱신 (재연결 후 고가/저가 소실 방지)
+          latestEthData = {
+            ...latestEthData,
+            ...data
+          };
+
           renderEthCard({
             ...data,
             max_price: data.max_price || latestEthData?.max_price,

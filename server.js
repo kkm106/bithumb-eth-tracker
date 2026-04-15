@@ -7,7 +7,8 @@ const path = require('path');
 const BITHUMB_URL = 'https://api.bithumb.com/public/ticker/ETH_KRW';
 const BITHUMB_ALL_URL = 'https://api.bithumb.com/public/ticker/ALL_KRW';
 const BINANCE_URL = 'https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT';
-const USD_KRW_RATE = Number(process.env.USD_KRW_RATE) || 1380;
+const KOREA_EXIM_URL_BASE = 'https://www.koreaexim.go.kr/site/program/financial/exchangeJson';
+let currentUsdKrwRate = Number(process.env.USD_KRW_RATE) || 1380;
 const PORT = process.env.PORT || 3000;
 const POLL_INTERVAL = 10000; // 10 seconds (SRS FR-005)
 const TOP10_POLL_INTERVAL = 60000; // 60 seconds
@@ -23,6 +24,117 @@ let clientIdCounter = 0;
 let latestTop10 = null;
 const top10SseClients = new Map();
 let top10ClientIdCounter = 0;
+
+/**
+ * KST(UTC+9) 기준 오늘(또는 N일 전) 날짜를 YYYYMMDD 문자열로 반환
+ * @param {number} offsetDays  0=오늘, -1=어제
+ * @returns {string}
+ */
+function getKstDateStr(offsetDays = 0) {
+  const now = new Date();
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000 + offsetDays * 86400000);
+  const y = kst.getUTCFullYear();
+  const m = String(kst.getUTCMonth() + 1).padStart(2, '0');
+  const d = String(kst.getUTCDate()).padStart(2, '0');
+  return `${y}${m}${d}`;
+}
+
+/**
+ * 한국수출입은행 전시환율 API에서 USD/KRW 환율 조회.
+ * 오늘 데이터 없으면 어제 날짜로 1회 재시도.
+ * 실패 시 이전 currentUsdKrwRate 유지.
+ * @param {string}  [dateStr]   YYYYMMDD (기본: 오늘 KST)
+ * @param {boolean} [isRetry]   내부 재시도 플래그 (외부에서 전달 불필요)
+ * @returns {Promise<void>}
+ */
+function fetchBankKoreaRate(dateStr, isRetry = false) {
+  const authkey = process.env.KOREA_EXIM_AUTHKEY || '';
+  const date = dateStr || getKstDateStr(0);
+  const url = `${KOREA_EXIM_URL_BASE}?authkey=${encodeURIComponent(authkey)}&searchdate=${date}&data=AP01`;
+
+  return new Promise((resolve) => {
+    const req = https.get(url, { timeout: 3000 }, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const items = JSON.parse(data);
+
+          // 빈 배열 또는 비배열 → 어제 날짜 재시도
+          if (!Array.isArray(items) || items.length === 0) {
+            if (!isRetry) {
+              console.warn(`[BankRate] ${date} 데이터 없음, 어제 날짜로 재시도`);
+              fetchBankKoreaRate(getKstDateStr(-1), true).then(resolve);
+            } else {
+              console.error('[BankRate] 어제 데이터도 없음, 이전값 유지:', currentUsdKrwRate);
+              resolve();
+            }
+            return;
+          }
+
+          const usdItem = items.find((item) => item.cur_unit === 'USD');
+          if (!usdItem) {
+            if (!isRetry) {
+              console.warn(`[BankRate] ${date} USD 항목 없음, 어제 날짜로 재시도`);
+              fetchBankKoreaRate(getKstDateStr(-1), true).then(resolve);
+            } else {
+              console.error('[BankRate] 어제도 USD 항목 없음, 이전값 유지:', currentUsdKrwRate);
+              resolve();
+            }
+            return;
+          }
+
+          const rate = parseFloat(usdItem.deal_bas_r.replace(/,/g, ''));
+          if (isNaN(rate) || rate <= 0) {
+            console.error('[BankRate] deal_bas_r 파싱 실패, 이전값 유지:', usdItem.deal_bas_r);
+            resolve();
+            return;
+          }
+
+          currentUsdKrwRate = rate;
+          console.log(`[BankRate] USD/KRW 갱신 (${date}): ${currentUsdKrwRate}`);
+          resolve();
+
+        } catch (err) {
+          console.error('[BankRate] 파싱 오류, 이전값 유지:', err.message);
+          resolve();
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      console.error('[BankRate] 요청 오류, 이전값 유지:', err.message);
+      resolve();
+    });
+    req.on('timeout', () => {
+      console.error('[BankRate] 타임아웃, 이전값 유지');
+      req.destroy();
+      resolve();
+    });
+  });
+}
+
+/**
+ * 다음 23:00 KST(= 14:00 UTC)에 환율 갱신을 스케줄한다.
+ * 호출 시점이 이미 14:00 UTC를 지났으면 다음날 14:00 UTC로 설정.
+ */
+function scheduleNextRateUpdate() {
+  const now = new Date();
+  const next = new Date();
+  next.setUTCHours(14, 0, 0, 0); // 14:00 UTC = 23:00 KST
+
+  if (next <= now) {
+    next.setUTCDate(next.getUTCDate() + 1);
+  }
+
+  const delayMs = next - now;
+  console.log(`[BankRate] 다음 환율 갱신 예정: ${next.toISOString()} (${Math.round(delayMs / 60000)}분 후)`);
+
+  setTimeout(async () => {
+    await fetchBankKoreaRate();
+    scheduleNextRateUpdate(); // 재귀 등록
+  }, delayMs);
+}
 
 /**
  * Fetch ETH/USDT price from Binance Public API
@@ -64,7 +176,7 @@ function fetchBinancePrice() {
  */
 function calcKimchiRate(bithumbKrw, binanceUsdt) {
   if (!bithumbKrw || !binanceUsdt || binanceUsdt <= 0) return null;
-  const base = binanceUsdt * USD_KRW_RATE;
+  const base = binanceUsdt * currentUsdKrwRate;
   if (base <= 0) return null;
   return Math.round(((bithumbKrw / base) - 1) * 10000) / 100;
 }
@@ -105,14 +217,14 @@ async function fetchPrice() {
             latestKimchi = {
               bithumb_krw: latestPrice.current_price,
               binance_usdt: binancePrice ?? latestKimchi?.binance_usdt ?? null,
-              usd_krw_rate: USD_KRW_RATE,
+              usd_krw_rate: currentUsdKrwRate,
               kimchi_rate: kimchiRate ?? latestKimchi?.kimchi_rate ?? null,
               updated_at: latestPrice.updated_at
             };
 
             // latestPrice에도 반영
             latestPrice.binance_price = latestKimchi.binance_usdt;
-            latestPrice.usd_krw_rate  = USD_KRW_RATE;
+            latestPrice.usd_krw_rate  = currentUsdKrwRate;
             latestPrice.kimchi_rate   = latestKimchi.kimchi_rate;
 
             console.log(`[${latestPrice.updated_at}] Price updated: ₩${latestPrice.current_price} (kimchi: ${latestPrice.kimchi_rate}%)`);
@@ -426,28 +538,29 @@ const server = http.createServer((req, res) => {
 });
 
 // Start server
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
   console.log(`\n🚀 Bithumb ETH Tracker listening on http://localhost:${PORT}`);
   console.log('Press Ctrl+C to stop\n');
 
-  // Fetch price immediately
+  // 한국은행 환율 초기 조회 (await: 환율 확보 후 fetchPrice 실행)
+  console.log('📡 한국은행 환율 초기 조회...');
+  await fetchBankKoreaRate();
+
+  // 매일 23:00 KST 갱신 스케줄러 등록
+  scheduleNextRateUpdate();
+
+  // 기존 ETH 가격 폴링 유지
   console.log('📡 Fetching initial price...');
   fetchPrice();
-
-  // Poll Bithumb API every 60 seconds
   setInterval(fetchPrice, POLL_INTERVAL);
 
-  // Fetch TOP10 immediately
+  // 기존 TOP10 폴링 유지
   console.log('📡 Fetching initial TOP10...');
   fetchTop10();
-
-  // Poll TOP10 every 60 seconds
   setInterval(fetchTop10, TOP10_POLL_INTERVAL);
 
-  // Send heartbeat every 30 seconds
+  // 기존 heartbeat 유지
   setInterval(sendHeartbeat, HEARTBEAT_INTERVAL);
-
-  // Send TOP10 heartbeat every 30 seconds
   setInterval(sendTop10Heartbeat, HEARTBEAT_INTERVAL);
 });
 
